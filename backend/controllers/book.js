@@ -2,11 +2,15 @@ const Book = require('../models/book')
 const fs = require('fs')
 
 exports.createBook = (req, res, next) => {
+  console.log('Requête reçue:', req.body.book)
+
   const bookObject = JSON.parse(req.body.book)
+
+  console.log('Objet livre après parsing:', bookObject)
 
   delete bookObject._id
   delete bookObject._userId
-
+  console.log('Objet livre après suppression des propriétés:', bookObject)
   const book = new Book({
     ...bookObject,
     userId: req.auth.userId,
@@ -106,4 +110,39 @@ exports.getBestBooks = (req, res, next) => {
     .limit(3)
     .then((books) => res.status(200).json(books))
     .catch((error) => res.status(400).json({ error }))
+}
+
+exports.addRating = (req, res, next) => {
+  const { userId, rating } = req.body
+
+  if (rating < 0 || rating > 5) {
+    return res
+      .status(400)
+      .json({ message: 'La note doit entre comprise entre 0 et 5.' })
+  }
+  Book.findOne({ _id: req.params.id })
+    .then((book) => {
+      if (!book) {
+        return res.status(404).json({ message: 'Livre non trouvé.' })
+      }
+
+      const userHasRated = book.ratings.find((r) => r.userId === userId)
+      if (userHasRated) {
+        return res
+          .status(400)
+          .json({ message: 'Vous avez déjà noté ce livre.' })
+      }
+
+      book.ratings.push({ userId, grade: rating })
+
+      const totalRatings = book.ratings.length
+      const sumRatings = book.ratings.reduce((acc, curr) => acc + curr.grade, 0)
+      book.averageRating = Math.round((sumRatings / totalRatings) * 10) / 10
+
+      book
+        .save()
+        .then((updatedBook) => res.status(200).json(updatedBook))
+        .catch((error) => res.status(400).json({ error }))
+    })
+    .catch((error) => res.status(500).json({ error }))
 }
